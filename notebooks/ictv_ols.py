@@ -43,6 +43,34 @@ class ICTVOLSClient:
             raise ValueError(f"Multiple taxa found with identifier/label {id_or_label} in release {release}")
         return self._map_entity( res[0] )
 
+    def get_taxon_by_label_or_synonym(self, release, term_name):
+        """
+        Efficiently search for a taxon in the given release by label or synonym (without fetching all taxa).
+        Returns a dict with unique identifier and all metadata.
+        """
+        self._validate_release(release)
+        # Try to fetch by label
+        res = self._get_all_merged([
+            f"{self.base_url}/classes?{VERSION_INFO}={release}&isObsolete=false&label={term_name}",
+            f"{self.base_url}/classes?{VERSION_INFO}={release}&isObsolete=true&label={term_name}",
+        ])
+        if res:
+            if len(res) > 1:
+                raise ValueError(f"Multiple taxa found with label {term_name} in release {release}")
+            return self._map_entity(res[0])
+
+    # If not found by label, try by synonyms (exact match)
+    # OLS doesn't have a direct "synonym search", so we fetch terms with a filter on synonym.
+    synonym_url = f"{self.base_url}/classes?{VERSION_INFO}={release}&isObsolete=false&synonym={term_name}"
+    synonym_url_obs = f"{self.base_url}/classes?{VERSION_INFO}={release}&isObsolete=true&synonym={term_name}"
+    res_syn = self._get_all_merged([synonym_url, synonym_url_obs])
+    if res_syn:
+        if len(res_syn) > 1:
+            raise ValueError(f"Multiple taxa found with synonym {term_name} in release {release}")
+        return self._map_entity(res_syn[0])
+
+    raise ValueError(f"Taxon with label or synonym '{term_name}' not found in release {release}")
+    
     def get_replacements(self, release, id_or_label):
         taxon = self.get_taxon_by_release(release, id_or_label)
         return self._resolve_iris(taxon['replacements'])
